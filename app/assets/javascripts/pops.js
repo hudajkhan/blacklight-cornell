@@ -175,14 +175,9 @@ class kPanel {
          	var image = wikidataParsedData["image"];
             var uri = wikidataParsedData["uriValue"];
          	if(this.isSupportedImageType(image)) {
-         		//Requesting smaller size image
-         		image += "?width=" + this.imageSize;
-	         	//Check filename to ensure that w are
-	         	var html = "<figure class='kp-entity-image float-left'><img src='" + image + "'><br>"
-                html += "<span class='kp-source'>Image: <a href='" + uri + "'>Wikidata</a></span></figure>";
-	            $("#imageContent").html(html);
-            }         	
-         }
+						this.isSupportedImageLicense(image, uri);        	
+         	}
+				}
          
          if("description" in wikidataParsedData) {
          	//Check if file type ends with jpg or gif or png
@@ -207,6 +202,60 @@ class kPanel {
 		var fileExtension = image.substr( (image.lastIndexOf('.') +1) ).toLowerCase();
 		return (fileExtension == "jpg" || fileExtension == "jpeg" || fileExtension == "gif" || fileExtension == "png" || fileExtension == "svg");
 	}
+	isSupportedImageLicense(image, uri) {
+		var eThis = this;
+		//An AJAX request to the wikimedia commons API to check for license
+		//Get local file name
+		if(image.lastIndexOf("/") != -1) {
+			var localFileName = image.substring(image.lastIndexOf("/") + 1);
+			//Query Wikimedia to find license information
+			var wikimediaURL = "https://commons.wikimedia.org/w/api.php?origin=*&action=query&prop=imageinfo&format=json&iiprop=extmetadata&iilimit=10&iiextmetadatafilter=License|UsageTerms|LicenseShortName|LicenseUrl&titles=File:" + localFileName;
+			$.ajax({
+				url: wikimediaURL,
+				dataType: 'json',
+				type: 'GET',
+				headers: { 'Api-User-Agent': 'Cornell Library Catalog' },
+				success : function (data) {
+					var canDisplay = false;
+					if(("query" in data) && ("pages" in data["query"])) {
+						var pages = data["query"]["pages"];
+						//Info will be present under ad
+						//Object keys
+						for(var k in pages) {
+							var info = pages[k];
+							if(("imageinfo" in info) && (info["imageinfo"].length > 0)) {
+								//First element is "current"
+								var imageInfo = info["imageinfo"][0];
+								if(("extmetadata" in imageInfo) && ("License" in imageInfo["extmetadata"]) && 
+									("value" in imageInfo["extmetadata"]["License"]) &&
+									eThis.isAllowedLicense(imageInfo["extmetadata"]["License"]["value"].toLowerCase())) {
+									canDisplay = true;
+								}
+							}
+						}
+					}
+					if(canDisplay) {
+						//Requesting smaller size image
+						image += "?width=" + eThis.imageSize;
+						//Check filename to ensure that w are
+						var html = "<figure class='kp-entity-image float-left'><img src='" + image + "'><br>";
+						html += "<span class='kp-source'>Image: <a href='" + uri + "'>Wikidata</a></span></figure>";
+						$("#imageContent").html(html);
+					}
+				},
+				error: function(xhr, status, error) {
+					//If Wikimedia  error occurs, then no information will be displayed
+					console.log("Error occurred retrieving Wikimedia image info for " + image);
+					console.log(xhr.status + ":" + xhr.statusText + ":" + xhr.responseText);
+				}		
+			});
+		}
+	}
+
+	isAllowedLicense(license) {
+		//Later, we may add CC By 4.0, in which case we would also check for (license === "cc-by-4.0" )
+		return ((license === "pd") || (license === "cc0"));
+	}
 }
 
 Blacklight.onLoad(function() {
@@ -215,8 +264,8 @@ Blacklight.onLoad(function() {
 	//This can be extended to include separate code if multiple knowledge panels are possible
 	if ( $('*[data-auth]').length ) {
 		var headingElement =  $('*[data-auth]');
-	  	var kPanelObj = new kPanel();
-	  	kPanelObj.init();
+	  var kPanelObj = new kPanel();
+	  kPanelObj.init();
 	} 
 }); 
 
